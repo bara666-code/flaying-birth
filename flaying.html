@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Tap-Tap Jet Pro - Sky Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111424;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 480px; /* Dioptimalkan untuk portrait HP */
+            height: 100%;
+            max-height: 850px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            overflow: hidden;
+            background: linear-gradient(to bottom, #b4cddc, #eef3f7);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #uiMenu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            z-index: 10;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4895ef, #3f37c9);
+            color: white;
+            border: none;
+            padding: 14px 45px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(63, 55, 201, 0.4);
+            transition: transform 0.1s, box-shadow 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+            font-family: 'Arial Black', Gadget, sans-serif;
+            background: linear-gradient(#fff, #4cc9f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+
+        p {
+            font-size: 15px;
+            margin-bottom: 30px;
+            color: #e2e8f0;
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <!-- Ukuran internal canvas disesuaikan untuk aspect ratio HP (480x800) -->
+        <canvas id="gameCanvas" width="480" height="800"></canvas>
+        
+        <!-- Menu Overlay -->
+        <div id="uiMenu">
+            <h1 id="menuTitle">TAP-TAP JET PRO</h1>
+            <p id="menuInstruction">Tap Layar / Tekan Spasi untuk Mengepakkan Sayap<br>Kumpulkan Koin Emas & Lewati Pipa Uap!</p>
+            <button id="actionBtn" class="btn">MULAI MISI</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const uiMenu = document.getElementById("uiMenu");
+        const menuTitle = document.getElementById("menuTitle");
+        const menuInstruction = document.getElementById("menuInstruction");
+        const actionBtn = document.getElementById("actionBtn");
+
+        let gameState = "MENU"; 
+        let score = 0;
+        let highScore = 0;
+        let currentLevel = 1;
+        
+        let particles = [];
+        let coins = [];
+        let clouds = [];
+
+        // Generate Awan Acak
+        for(let i=0; i<4; i++) {
+            clouds.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * 180 + 40,
+                speed: Math.random() * 0.2 + 0.1,
+                size: Math.random() * 25 + 15
+            });
+        }
+
+        // Variabel Karakter Burung (Disesuaikan posisinya untuk layar portrait)
+        const bird = {
+            x: 120,
+            y: 350,
+            radius: 16, 
+            gravity: 0.4,
+            velocity: 0,
+            jump: -7.0,
+            rotation: 0,
+            wingCycle: 0, 
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                this.wingCycle += (this.velocity < 0) ? 0.3 : 0.1;
+                let wingPos = Math.sin(this.wingCycle) * 15;
+
+                // 1. Ekor Burung
+                ctx.fillStyle = "#2c3e50";
+                ctx.beginPath();
+                ctx.moveTo(-15, 0);
+                ctx.lineTo(-32, -8 + (wingPos * 0.2));
+                ctx.lineTo(-30, 8 - (wingPos * 0.2));
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = "#ecf0f1";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 2. Sayap Belakang
+                ctx.fillStyle = "#34495e";
+                ctx.beginPath();
+                ctx.moveTo(-5, -5);
+                ctx.lineTo(-18, -30 - wingPos);
+                ctx.lineTo(-25, -20 - wingPos);
+                ctx.closePath();
+                ctx.fill();
+
+                // 3. Badan Utama
+                let bodyGrad = ctx.createLinearGradient(-20, -10, 20, 10);
+                bodyGrad.addColorStop(0, "#2980b9");
+                bodyGrad.addColorStop(0.6, "#3498db");
+                bodyGrad.addColorStop(1, "#ecf0f1");
+                ctx.fillStyle = bodyGrad;
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Garis Pola Hitam
+                ctx.fillStyle = "#1a252f";
+                ctx.beginPath();
+                ctx.moveTo(8, -12);
+                ctx.quadraticCurveTo(2, 0, -5, 12);
+                ctx.lineTo(-1, 14);
+                ctx.quadraticCurveTo(8, 0, 14, -8);
+                ctx.closePath();
+                ctx.fill();
+
+                // 4. Kepala & Jambul
+                ctx.fillStyle = "#2980b9";
+                ctx.beginPath();
+                ctx.moveTo(5, -12);
+                ctx.lineTo(-12, -26);
+                ctx.lineTo(-2, -16);
+                ctx.quadraticCurveTo(15, -15, 18, -2);
+                ctx.closePath();
+                ctx.fill();
+
+                // Mata Burung
+                ctx.fillStyle = "#fff";
+                ctx.beginPath();
+                ctx.arc(9, -6, 3.5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = "#000";
+                ctx.beginPath();
+                ctx.arc(10, -6, 1.8, 0, Math.PI*2);
+                ctx.fill();
+
+                // Paruh Lancip
+                ctx.fillStyle = "#2c3e50";
+                ctx.beginPath();
+                ctx.moveTo(14, -4);
+                ctx.lineTo(28, 2);
+                ctx.lineTo(12, 5);
+                ctx.closePath();
+                ctx.fill();
+
+                // 5. Sayap Depan Utama
+                let wingGrad = ctx.createLinearGradient(-10, 0, -5, -35);
+                wingGrad.addColorStop(0, "#2980b9");
+                wingGrad.addColorStop(0.7, "#3498db");
+                wingGrad.addColorStop(1, "#ecf0f1");
+                
+                ctx.fillStyle = wingGrad;
+                ctx.beginPath();
+                ctx.moveTo(2, 2);
+                ctx.quadraticCurveTo(-15, -25 - wingPos, -8, -38 - wingPos);
+                ctx.quadraticCurveTo(-2, -35 - wingPos, 8, -5);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = "rgba(44, 62, 80, 0.4)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            },
+            update() {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                if (this.velocity >= 0) {
+                    this.rotation = Math.min(Math.PI / 6, this.rotation + 0.04);
+                } else {
+                    this.rotation = Math.max(-Math.PI / 8, this.rotation - 0.08);
+                }
+
+                if (Math.random() < 0.35 && gameState === "PLAYING") {
+                    createFeatherParticle(this.x - 20, this.y + (Math.random()*12 - 6));
+                }
+
+                // Batas Tanah / Ground
+                if (this.y + this.radius >= canvas.height - 45) {
+                    this.y = canvas.height - 45 - this.radius;
+                    if(gameState === "PLAYING") {
+                        triggerExplosion(this.x, this.y, '#e74c3c');
+                        gameOver();
+                    }
+                }
+                // Batas Langit
+                if (this.y - this.radius <= 0) {
+                    this.y = this.radius;
+                    this.velocity = 0;
+                }
+            },
+            flap() {
+                if (gameState === "PLAYING") {
+                    this.velocity = this.jump;
+                    for(let i=0; i<3; i++) {
+                        createFeatherParticle(this.x - 15, this.y);
+                    }
+                }
+            },
+            reset() {
+                this.y = 350;
+                this.velocity = 0;
+                this.rotation = 0;
+            }
+        };
+
+        // Sistem Pipa (Ukuran & Jarak disesuaikan untuk layar HP)
+        const pipes = {
+            position: [],
+            baseGap: 160, 
+            width: 75,
+            baseSpeed: 2.6,
+            spawnRate: 100, 
+            timer: 0,
+            
+            draw() {
+                for (let i = 0; i < this.position.length; i++) {
+                    let p = this.position[i];
+                    
+                    let grad = ctx.createLinearGradient(p.x, 0, p.x + this.width, 0);
+                    grad.addColorStop(0, "#27ae60");
+                    grad.addColorStop(0.3, "#2ecc71");
+                    grad.addColorStop(0.7, "#27ae60");
+                    grad.addColorStop(1, "#1e824c");
+
+                    ctx.fillStyle = grad;
+                    ctx.strokeStyle = "#145a32";
+                    ctx.lineWidth = 3;
+
+                    let currentGap = Math.max(130, this.baseGap - (currentLevel * 4)); 
+                    let bottomY = p.topHeight + currentGap;
+                    let bottomHeight = canvas.height - bottomY - 45;
+
+                    // PIPA ATAS
+                    ctx.fillRect(p.x, 0, this.width, p.topHeight);
+                    ctx.strokeRect(p.x, -5, this.width, p.topHeight + 5);
+                    ctx.fillRect(p.x - 4, p.topHeight - 25, this.width + 8, 25);
+                    ctx.strokeRect(p.x - 4, p.topHeight - 25, this.width + 8, 25);
+
+                    // PIPA BAWAH
+                    ctx.fillRect(p.x, bottomY, this.width, bottomHeight);
+                    ctx.strokeRect(p.x, bottomY, this.width, bottomHeight + 5);
+                    ctx.fillRect(p.x - 4, bottomY, this.width + 8, 25);
+                    ctx.strokeRect(p.x - 4, bottomY, this.width + 8, 25);
+
+                    // Ornamen Indikator Merah
+                    ctx.fillStyle = (Math.floor(Date.now() / 250) % 2 === 0) ? "#ff3f34" : "#9b1c1c";
+                    ctx.beginPath();
+                    ctx.arc(p.x + this.width/2, p.topHeight - 12, 5, 0, Math.PI*2);
+                    ctx.arc(p.x + this.width/2, bottomY + 12, 5, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            },
+            update() {
+                if (gameState !== "PLAYING") return;
+
+                let currentSpeed = this.baseSpeed + (currentLevel * 0.25); 
+
+                this.timer++;
+                if (this.timer >= this.spawnRate) {
+                    let currentGap = Math.max(130, this.baseGap - (currentLevel * 4));
+                    let minHeight = 80;
+                    let maxHeight = canvas.height - currentGap - 120;
+                    let topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+
+                    this.position.push({
+                        x: canvas.width,
+                        topHeight: topHeight,
+                        passed: false
+                    });
+
+                    coins.push({
+                        x: canvas.width + this.width / 2,
+                        y: topHeight + currentGap / 2,
+                        radius: 13,
+                        pulse: 0
+                    });
+
+                    this.timer = 0;
+                }
+
+                for (let i = 0; i < this.position.length; i++) {
+                    let p = this.position[i];
+                    p.x -= currentSpeed;
+
+                    let currentGap = Math.max(130, this.baseGap - (currentLevel * 4));
+                    let bottomY = p.topHeight + currentGap;
+                    
+                    // Hitbox presisi lingkaran burung terhadap kotak pipa
+                    if (bird.x + bird.radius - 2 > p.x - 4 && bird.x - bird.radius + 2 < p.x + this.width + 4) {
+                        if (bird.y - bird.radius + 2 < p.topHeight || bird.y + bird.radius - 2 > bottomY) {
+                            triggerExplosion(bird.x, bird.y, '#e74c3c');
+                            gameOver();
+                        }
+                    }
+
+                    if (!p.passed && p.x + this.width / 2 < bird.x) {
+                        score++;
+                        p.passed = true;
+                        currentLevel = Math.floor(score / 6) + 1;
+                    }
+
+                    if (p.x + this.width < -20) {
+                        this.position.shift();
+                        i--;
+                    }
+                }
+            },
+            reset() {
+                this.position = [];
+                this.timer = 0;
+            }
+        };
+
+        // Sistem Koin
+        function updateAndDrawCoins() {
+            let currentSpeed = pipes.baseSpeed + (currentLevel * 0.25);
+            for(let i = 0; i < coins.length; i++) {
+                let c = coins[i];
+                if(gameState === "PLAYING") c.x -= currentSpeed;
+
+                c.pulse += 0.08;
+                let scaleX = Math.abs(Math.sin(c.pulse));
+
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.scale(scaleX, 1);
+
+                let coinGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, c.radius);
+                coinGrad.addColorStop(0, "#ffeaa7");
+                coinGrad.addColorStop(0.8, "#f1c40f");
+                coinGrad.addColorStop(1, "#f39c12");
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, c.radius, 0, Math.PI * 2);
+                ctx.fillStyle = coinGrad;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#fff";
+                ctx.stroke();
+
+                ctx.fillStyle = "#d35400";
+                ctx.font = "bold 13px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("C", 0, 0);
+
+                ctx.restore();
+
+                let dist = Math.hypot(bird.x - c.x, bird.y - c.y);
+                if (dist < bird.radius + c.radius) {
+                    score += 5;
+                    triggerExplosion(c.x, c.y, '#f1c40f');
+                    coins.splice(i, 1);
+                    i--;
+                    continue;
+                }
+
+                if(c.x + c.radius < -10) {
+                    coins.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // Efek Partikel Bulu
+        function createFeatherParticle(x, y) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.8) * 1.5 - 1.0,
+                vy: (Math.random() - 0.5) * 1,
+                size: Math.random() * 7 + 5,
+                alpha: 1,
+                rot: Math.random() * Math.PI,
+                color: Math.random() < 0.5 ? '#dff9fb' : '#7ed6df'
+            });
+        }
+
+        function triggerExplosion(x, y, color) {
+            for(let i=0; i<20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 4 + 2,
+                    alpha: 1,
+                    rot: Math.random() * 3,
+                    color: color
+                });
+            }
+        }
+
+        function updateAndDrawParticles() {
+            for(let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.025;
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                
+                ctx.beginPath();
+                ctx.ellipse(0, 0, p.size, p.size / 2.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                ctx.restore();
+
+                if(p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // Latar Belakang Paralaks
+        function drawBackground() {
+            ctx.fillStyle = "rgba(255,255,255,0.35)";
+            clouds.forEach(cl => {
+                if(gameState === "PLAYING") cl.x -= cl.speed;
+                if(cl.x + cl.size * 2 < 0) cl.x = canvas.width + 50;
+                ctx.beginPath();
+                ctx.arc(cl.x, cl.y, cl.size, 0, Math.PI*2);
+                ctx.arc(cl.x + cl.size*0.6, cl.y - cl.size*0.2, cl.size*0.8, 0, Math.PI*2);
+                ctx.arc(cl.x + cl.size*1.2, cl.y, cl.size*0.6, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Layer Gunung
+            ctx.fillStyle = "#95a5a6";
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(0, 480);
+            ctx.lineTo(120, 420);
+            ctx.lineTo(240, 490);
+            ctx.lineTo(360, 400);
+            ctx.lineTo(canvas.width, 470);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Layer Gedung Kota
+            ctx.fillStyle = "#7f8c8d";
+            const buildings = [
+                {x: 10, w: 50, h: 220}, {x: 70, w: 60, h: 280}, {x: 140, w: 50, h: 190},
+                {x: 200, w: 65, h: 250}, {x: 275, w: 55, h: 310}, {x: 340, w: 60, h: 210},
+                {x: 410, w: 60, h: 260}
+            ];
+            buildings.forEach(b => {
+                ctx.fillRect(b.x, canvas.height - b.h - 45, b.w, b.h);
+                ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+                ctx.fillRect(b.x + b.w/4, canvas.height - b.h + 20, b.w/2, 40);
+                ctx.fillRect(b.x + b.w/4, canvas.height - b.h + 80, b.w/2, 40);
+                ctx.fillStyle = "#7f8c8d";
+            });
+
+            // Tanah Dekat
+            ctx.fillStyle = "#34495e";
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(0, canvas.height - 55);
+            ctx.quadraticCurveTo(canvas.width/3, canvas.height - 65, canvas.width/2, canvas.height - 50);
+            ctx.quadraticCurveTo(canvas.width * 0.7, canvas.height - 40, canvas.width, canvas.height - 55);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Laser Merah Pembatas
+            ctx.strokeStyle = "#ff3838";
+            ctx.lineWidth = 4;
+            ctx.shadowColor = "#ff3838";
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height - 45);
+            ctx.lineTo(canvas.width, canvas.height - 45);
+            ctx.stroke();
+            ctx.shadowBlur = 0; 
+        }
+
+        // HUD Scoreboard
+        function drawHUD() {
+            ctx.save();
+            ctx.fillStyle = "rgba(28, 36, 49, 0.85)";
+            ctx.strokeStyle = "rgba(255,255,255,0.1)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(15, 15, 180, 110, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 20px 'Courier New', Courier, monospace";
+            ctx.fillText(`LVL: ${currentLevel}`, 28, 42);
+            
+            ctx.font = "15px 'Courier New', Courier, monospace";
+            ctx.fillStyle = "#bdc3c7";
+            ctx.fillText(`SCORE: ${score}`, 28, 72);
+            ctx.fillText(`BEST : ${highScore}`, 28, 97);
+            ctx.restore();
+        }
+
+        // Loop Inti Game
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Burung tetap diupdate agar jika menabrak, dia bisa jatuh alami ke tanah
+            bird.update();
+            
+            if (gameState === "PLAYING") {
+                pipes.update();
+            }
+
+            drawBackground();
+            pipes.draw();
+            updateAndDrawCoins();
+            updateAndDrawParticles();
+            bird.draw();
+            drawHUD();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Kontrol Aktivitas
+        function startGame() {
+            gameState = "PLAYING";
+            score = 0;
+            currentLevel = 1;
+            bird.reset();
+            pipes.reset();
+            particles = [];
+            coins = [];
+            uiMenu.style.display = "none";
+        }
+
+        function gameOver() {
+            gameState = "GAMEOVER";
+            if (score > highScore) highScore = score;
+
+            menuTitle.innerText = "MISSION FAILED";
+            menuTitle.style.background = "linear-gradient(#fff, #ff4757)";
+            menuTitle.style.webkitBackgroundClip = "text";
+            menuInstruction.innerHTML = `Skor Terkumpul: <span style="color:#54a0ff; font-size:24px; font-weight:bold">${score}</span><br>Rekor Puncak: <b>${highScore}</b><br><br>Gagal di Level Operasi: <b>${currentLevel}</b>`;
+            actionBtn.innerText = "TERBANG LAGI";
+            uiMenu.style.display = "flex";
+        }
+
+        // --- SISTEM INPUT GLOBAL (ANTI BUG HP & DESKTOP) ---
+        
+        // Mencegah masalah klik ganda (Kombinasi touch + click)
+        function handleInput(e) {
+            if (e) e.preventDefault();
+            
+            if (gameState === "PLAYING") {
+                bird.flap();
+            }
+        }
+
+        // Jalankan game ketika tombol di menu di-tap/klik
+        actionBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            startGame();
+        });
+        actionBtn.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            startGame();
+        });
+
+        // Event listener ketukan di seluruh layar game kontainer (Nyaman untuk jempol HP)
+        const container = document.getElementById("gameContainer");
+        container.addEventListener("touchstart", handleInput, { passive: false });
+        container.addEventListener("mousedown", handleInput);
+
+        // Kontrol Spasi Keyboard untuk pengguna PC/Laptop
+        window.addEventListener("keydown", function(e) {
+            if (e.code === "Space") {
+                e.preventDefault();
+                if (gameState === "PLAYING") bird.flap();
+                else if (gameState === "MENU" || gameState === "GAMEOVER") startGame();
+            }
+        });
+
+        // Jalankan Siklus Utama
+        gameLoop();
+    </script>
+</body>
+</html>
