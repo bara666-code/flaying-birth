@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Tap-Tap Chicken Pro - Cute Edition</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111424;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 480px; /* Dioptimalkan untuk portrait HP */
+            height: 100%;
+            max-height: 850px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            overflow: hidden;
+            /* Background langit subuh yang lebih lembut */
+            background: linear-gradient(to bottom, #a1c4fd, #c2e9fb);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #uiMenu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            z-index: 10;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #ff9ff3, #f368e0);
+            color: white;
+            border: none;
+            padding: 16px 50px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 6px 25px rgba(243, 104, 224, 0.5);
+            transition: transform 0.1s, box-shadow 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+            font-family: 'Comic Sans MS', 'Curisve', sans-serif; /* Font lebih santai */
+            background: linear-gradient(#fff, #ff9ff3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        p {
+            font-size: 16px;
+            margin-bottom: 40px;
+            color: #f1f2f6;
+            text-align: center;
+            line-height: 1.6;
+            max-width: 80%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="480" height="800"></canvas>
+        
+        <!-- Menu Overlay -->
+        <div id="uiMenu">
+            <h1 id="menuTitle">AYAM COLA TAP</h1>
+            <p id="menuInstruction">Bantu si Bulat melompat!<br>Tap layar untuk mengepakkan sayap comelnya.</p>
+            <p id="title">BARA S.d S.MP SM.K</p>
+            <button id="actionBtn" class="btn">Mulai Main!</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const uiMenu = document.getElementById("uiMenu");
+        const menuTitle = document.getElementById("menuTitle");
+        const menuInstruction = document.getElementById("menuInstruction");
+        const actionBtn = document.getElementById("actionBtn");
+
+        let gameState = "MENU"; 
+        let score = 0;
+        let highScore = 0;
+        let currentLevel = 1;
+        
+        let particles = [];
+        let coins = [];
+        let clouds = [];
+
+        // Generate Awan Acak
+        for(let i=0; i<5; i++) {
+            clouds.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * 250 + 50,
+                speed: Math.random() * 0.3 + 0.1,
+                size: Math.random() * 30 + 20
+            });
+        }
+
+        // Variabel Karakter Ayam - EDISI GEMAS
+        const chicken = {
+            x: 120,
+            y: 350,
+            radius: 22, // Lebih besar dan bulat
+            gravity: 0.45, // Sedikit lebih berat biar kerasa "bulat"
+            velocity: 0,
+            jump: -7.8,
+            rotation: 0,
+            wingCycle: 0, 
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // Animasi Sayap comel
+                this.wingCycle += (this.velocity < 0) ? 0.6 : 0.15;
+                let wingPos = Math.sin(this.wingCycle) * 8;
+
+                // --- MENGGAMBAR AYAM CHIBI/GEMAS ---
+
+                // 1. Kaki Kecil (Sembunyi di bawah badan saat terbang)
+                ctx.fillStyle = "#ff9f43";
+                // Kaki kiri
+                ctx.beginPath();
+                ctx.roundRect(-10, 15 + (this.velocity < 0 ? 2 : 0), 6, 8, 3);
+                ctx.fill();
+                // Kaki kanan
+                ctx.beginPath();
+                ctx.roundRect(4, 15 + (this.velocity < 0 ? 2 : 0), 6, 8, 3);
+                ctx.fill();
+
+                // 2. Badan Utama (Bulat Sempurna & Gemuk)
+                ctx.fillStyle = "#ffffff"; // Putih bersih
+                ctx.strokeStyle = "#f1f2f6";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // 3. Pipi Merah Merona (Blush - Kunci Gemas)
+                ctx.fillStyle = "rgba(255, 175, 190, 0.6)";
+                // Pipi kiri
+                ctx.beginPath();
+                ctx.arc(-10, 5, 6, 0, Math.PI * 2);
+                ctx.fill();
+                // Pipi kanan
+                ctx.beginPath();
+                ctx.arc(10, 5, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 4. Jengger & Pial (Kecil & Membulat)
+                ctx.fillStyle = "#ff6b6b";
+                // Jengger atas (bulat-bulat chibi)
+                ctx.beginPath();
+                ctx.arc(-5, -20, 6, 0, Math.PI * 2);
+                ctx.arc(2, -22, 7, 0, Math.PI * 2);
+                ctx.arc(9, -19, 5, 0, Math.PI * 2);
+                ctx.fill();
+                // Pial bawah (kecil di bawah paruh)
+                ctx.beginPath();
+                ctx.arc(0, 12, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 5. Paruh Kuning (Kecil & Tumpul, tidak lancip)
+                ctx.fillStyle = "#feca57";
+                ctx.beginPath();
+                ctx.moveTo(-4, 4);
+                ctx.quadraticCurveTo(0, 10, 4, 4); // Paruh bawah membulat
+                ctx.quadraticCurveTo(0, 0, -4, 4); // Paruh atas membulat
+                ctx.closePath();
+                ctx.fill();
+
+                // 6. Mata (BESAR, Bulat, Hitam, & Berkilau - Sangat Gemas)
+                // Mata Kiri
+                ctx.fillStyle = "#1e272e"; // Hitam pekat
+                ctx.beginPath();
+                ctx.arc(-9, -4, 6, 0, Math.PI * 2);
+                ctx.fill();
+                // Kilauan Mata Besar (Kiri)
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(-11, -6, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Kilauan Mata Kecil (Kiri)
+                ctx.beginPath();
+                ctx.arc(-7, -2, 1, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mata Kanan
+                ctx.fillStyle = "#1e272e";
+                ctx.beginPath();
+                ctx.arc(9, -4, 6, 0, Math.PI * 2);
+                ctx.fill();
+                // Kilauan Mata Besar (Kanan)
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(7, -6, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Kilauan Mata Kecil (Kanan)
+                ctx.beginPath();
+                ctx.arc(11, -2, 1, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 7. Sayap Comel (Di samping, kepakan kecil)
+                ctx.save();
+                // Sayap kiri (tampak sedikit di belakang)
+                ctx.fillStyle = "#f1f2f6";
+                ctx.beginPath();
+                ctx.ellipse(-this.radius + 2, 2 + wingPos, 8, 5, Math.PI/4, 0, Math.PI*2);
+                ctx.fill();
+
+                // Sayap kanan (di depan badan)
+                ctx.fillStyle = "#ffffff";
+                ctx.strokeStyle = "#f1f2f6";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                // Rotasi sayap berdasarkan kepakan
+                ctx.ellipse(this.radius - 5, 2 - wingPos, 10, 6, -Math.PI/6 + (wingPos * Math.PI/180), 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                // 8. Ekor Bulat
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.arc(-this.radius + 3, 0, 6, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            },
+            update() {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                // Rotasi gemas (sedikit menunduk saat jatuh, mendongak saat lompat)
+                if (this.velocity >= 0) {
+                    this.rotation = Math.min(Math.PI / 6, this.rotation + 0.02);
+                } else {
+                    this.rotation = Math.max(-Math.PI / 10, this.rotation - 0.08);
+                }
+
+                // Efek partikel bulu halus
+                if (Math.random() < 0.15 && gameState === "PLAYING") {
+                    createChickenFeather(this.x - 10, this.y + (Math.random()*15 - 7));
+                }
+
+                // Batas Tanah
+                if (this.y + this.radius >= canvas.height - 45) {
+                    this.y = canvas.height - 45 - this.radius;
+                    if(gameState === "PLAYING") {
+                        triggerExplosion(this.x, this.y, '#ff6b6b'); // Ledakan warna jengger
+                        gameOver();
+                    }
+                }
+                // Batas Langit
+                if (this.y - this.radius <= 0) {
+                    this.y = this.radius;
+                    this.velocity = 0;
+                }
+            },
+            flap() {
+                if (gameState === "PLAYING") {
+                    this.velocity = this.jump;
+                    // Bulu halus saat kepak keras
+                    for(let i=0; i<3; i++) {
+                        createChickenFeather(this.x, this.y);
+                    }
+                }
+            },
+            reset() {
+                this.y = 350;
+                this.velocity = 0;
+                this.rotation = 0;
+            }
+        };
+
+        // Sistem Pipa (Sama)
+        const pipes = {
+            position: [],
+            baseGap: 190, // Lebih longgar biar lebih santai game-nya
+            width: 80,
+            baseSpeed: 2.4,
+            spawnRate: 110, 
+            timer: 0,
+            
+            draw() {
+                for (let i = 0; i < this.position.length; i++) {
+                    let p = this.position[i];
+                    
+                    // Gradasi pipa yang lebih halus (Hijau Pastel)
+                    let grad = ctx.createLinearGradient(p.x, 0, p.x + this.width, 0);
+                    grad.addColorStop(0, "#2ecc71");
+                    grad.addColorStop(0.5, "#A3CB38");
+                    grad.addColorStop(1, "#2ecc71");
+
+                    ctx.fillStyle = grad;
+                    ctx.strokeStyle = "#16a085";
+                    ctx.lineWidth = 3;
+
+                    let currentGap = Math.max(150, this.baseGap - (currentLevel * 3)); 
+                    let bottomY = p.topHeight + currentGap;
+                    let bottomHeight = canvas.height - bottomY - 45;
+
+                    // PIPA ATAS
+                    ctx.beginPath();
+                    ctx.roundRect(p.x, 0, this.width, p.topHeight, [0, 0, 5, 5]);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Bibir Pipa Atas
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - 5, p.topHeight - 25, this.width + 10, 25, 5);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // PIPA BAWAH
+                    ctx.beginPath();
+                    ctx.roundRect(p.x, bottomY, this.width, bottomHeight, [5, 5, 0, 0]);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Bibir Pipa Bawah
+                    ctx.beginPath();
+                    ctx.roundRect(p.x - 5, bottomY, this.width + 10, 25, 5);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Ornamen Lampu Comel
+                    ctx.fillStyle = (Math.floor(Date.now() / 300) % 2 === 0) ? "#ff9ff3" : "#f368e0";
+                    ctx.beginPath();
+                    ctx.arc(p.x + this.width/2, p.topHeight - 12, 6, 0, Math.PI*2);
+                    ctx.arc(p.x + this.width/2, bottomY + 12, 6, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            },
+            update() {
+                if (gameState !== "PLAYING") return;
+
+                let currentSpeed = this.baseSpeed + (currentLevel * 0.2); 
+
+                this.timer++;
+                if (this.timer >= this.spawnRate) {
+                    let currentGap = Math.max(150, this.baseGap - (currentLevel * 3));
+                    let minHeight = 100;
+                    let maxHeight = canvas.height - currentGap - 150;
+                    let topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+
+                    this.position.push({
+                        x: canvas.width,
+                        topHeight: topHeight,
+                        passed: false
+                    });
+
+                    coins.push({
+                        x: canvas.width + this.width / 2,
+                        y: topHeight + currentGap / 2,
+                        radius: 14,
+                        pulse: 0
+                    });
+
+                    this.timer = 0;
+                }
+
+                for (let i = 0; i < this.position.length; i++) {
+                    let p = this.position[i];
+                    p.x -= currentSpeed;
+
+                    let currentGap = Math.max(150, this.baseGap - (currentLevel * 3));
+                    let bottomY = p.topHeight + currentGap;
+                    
+                    // Hitbox presisi (dikurangi sedikit agar tidak terlalu sensitif)
+                    if (chicken.x + chicken.radius - 5 > p.x && chicken.x - chicken.radius + 5 < p.x + this.width) {
+                        if (chicken.y - chicken.radius + 8 < p.topHeight || chicken.y + chicken.radius - 8 > bottomY) {
+                            triggerExplosion(chicken.x, chicken.y, '#ff6b6b');
+                            gameOver();
+                        }
+                    }
+
+                    if (!p.passed && p.x + this.width / 2 < chicken.x) {
+                        score++;
+                        p.passed = true;
+                        currentLevel = Math.floor(score / 5) + 1; // Naik level setiap 5 pipa
+                    }
+
+                    if (p.x + this.width < -20) {
+                        this.position.shift();
+                        i--;
+                    }
+                }
+            },
+            reset() {
+                this.position = [];
+                this.timer = 0;
+            }
+        };
+
+        // Sistem Koin
+        function updateAndDrawCoins() {
+            let currentSpeed = pipes.baseSpeed + (currentLevel * 0.2);
+            for(let i = 0; i < coins.length; i++) {
+                let c = coins[i];
+                if(gameState === "PLAYING") c.x -= currentSpeed;
+
+                c.pulse += 0.1;
+                let scaleX = Math.abs(Math.sin(c.pulse));
+
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.scale(scaleX, 1);
+
+                // Koin Bintang Comel
+                ctx.fillStyle = "#feca57"; // Kuning lembut
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                
+                // Gambar bentuk bintang/bunga koin
+                drawStar(0, 0, 5, c.radius, c.radius/2);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = "#ff9f43";
+                ctx.font = "bold 16px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("★", 0, 1);
+
+                ctx.restore();
+
+                let dist = Math.hypot(chicken.x - c.x, chicken.y - c.y);
+                if (dist < chicken.radius + c.radius - 2) {
+                    score += 3; // Koin bintang nilainya 3
+                    triggerExplosion(c.x, c.y, '#feca57');
+                    coins.splice(i, 1);
+                    i--;
+                    continue;
+                }
+
+                if(c.x + c.radius < -10) {
+                    coins.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // Helper untuk gambar bintang koin
+        function drawStar(cx, cy, spikes, outerRadius, innerRadius) {
+            let rot = Math.PI / 2 * 3;
+            let x = cx;
+            let y = cy;
+            let step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius)
+            for (let i = 0; i < spikes; i++) {
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y)
+                rot += step
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y)
+                rot += step
+            }
+            ctx.lineTo(cx, cy - outerRadius)
+            ctx.closePath();
+        }
+
+        // Efek Partikel Bulu Halus (Putih & Pink lembut)
+        function createChickenFeather(x, y) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.6) * 1.0 - 0.3,
+                vy: (Math.random() - 0.2) * 1.2,
+                size: Math.random() * 5 + 3,
+                alpha: 1,
+                rot: Math.random() * Math.PI,
+                // Warna bulu: putih, pink lembut, cream
+                color: Math.random() < 0.5 ? '#ffffff' : (Math.random() < 0.8 ? '#ffeff2' : '#fcfcfc')
+            });
+        }
+
+        function triggerExplosion(x, y, color) {
+            for(let i=0; i<20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 4 + 2,
+                    alpha: 1,
+                    rot: Math.random() * 3,
+                    color: color
+                });
+            }
+        }
+
+        function updateAndDrawParticles() {
+            for(let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.02; // Hilang perlahan
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                
+                // Gambar bentuk bulu halus oval
+                ctx.beginPath();
+                ctx.ellipse(0, 0, p.size, p.size / 2.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                
+                ctx.restore();
+
+                if(p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    i--;
+                }
+            }
+        }
+
+        // Latar Belakang (Langit Pastel lembut)
+        function drawBackground() {
+            ctx.fillStyle = "rgba(255,255,255,0.5)";
+            clouds.forEach(cl => {
+                if(gameState === "PLAYING") cl.x -= cl.speed;
+                if(cl.x + cl.size * 2 < -20) cl.x = canvas.width + 50;
+                
+                // Awan bulat membal
+                ctx.beginPath();
+                ctx.arc(cl.x, cl.y, cl.size, 0, Math.PI*2);
+                ctx.arc(cl.x + cl.size*0.7, cl.y - cl.size*0.3, cl.size*0.8, 0, Math.PI*2);
+                ctx.arc(cl.x + cl.size*1.3, cl.y, cl.size*0.6, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Tanah (Biru Gelap Pastel)
+            ctx.fillStyle = "#485e74";
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height);
+            ctx.lineTo(0, canvas.height - 55);
+            ctx.quadraticCurveTo(canvas.width/3, canvas.height - 65, canvas.width/2, canvas.height - 50);
+            ctx.quadraticCurveTo(canvas.width * 0.7, canvas.height - 40, canvas.width, canvas.height - 55);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Garis Pembatas Tanah Comel (Pink)
+            ctx.strokeStyle = "#ff9ff3";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height - 45);
+            ctx.lineTo(canvas.width, canvas.height - 45);
+            ctx.stroke();
+        }
+
+        // HUD Scoreboard Comel
+        function drawHUD() {
+            ctx.save();
+            ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.strokeStyle = "rgba(243, 104, 224, 0.2)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(15, 15, 160, 100, 15); // Sudut membulat
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#2d3436";
+            ctx.font = "bold 18px 'Comic Sans MS', cursive, sans-serif";
+            ctx.fillText(`Lvl: ${currentLevel}`, 30, 42);
+            
+            ctx.font = "16px 'Comic Sans MS', cursive, sans-serif";
+            ctx.fillStyle = "#57606f";
+            ctx.fillText(`Skor: ${score}`, 30, 70);
+            ctx.fillText(`Rekor: ${highScore}`, 30, 92);
+            ctx.restore();
+        }
+
+        // Loop Inti Game
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            chicken.update();
+            
+            if (gameState === "PLAYING") {
+                pipes.update();
+            }
+
+            drawBackground();
+            pipes.draw();
+            updateAndDrawCoins();
+            updateAndDrawParticles();
+            chicken.draw();
+            drawHUD();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Kontrol Aktivitas
+        function startGame() {
+            gameState = "PLAYING";
+            score = 0;
+            currentLevel = 1;
+            chicken.reset();
+            pipes.reset();
+            particles = [];
+            coins = [];
+            uiMenu.style.display = "none";
+        }
+
+        function gameOver() {
+            gameState = "GAMEOVER";
+            if (score > highScore) highScore = score;
+
+            menuTitle.innerText = "YAAAH... CUPU!";
+            menuTitle.style.background = "linear-gradient(#fff, #ff6b6b)";
+            menuTitle.style.webkitBackgroundClip = "text";
+            menuInstruction.innerHTML = `Skor kamu: <span style="color:#ff9ff3; font-size:26px; font-weight:bold">${score}</span><br>Rekor terbaik: <b>${highScore}</b><br><br>Ayo coba lagi, Semangat kamu pasti bisa (depresi)!`;
+            actionBtn.innerText = "Main Lagi!";
+            uiMenu.style.display = "flex";
+        }
+
+        // --- SISTEM INPUT GLOBAL ---
+        
+        function handleInput(e) {
+            if (e && e.cancelable) e.preventDefault();
+            
+            if (gameState === "PLAYING") {
+                chicken.flap();
+            }
+        }
+
+        // Jalankan game ketika tombol di menu di-tap/klik
+        actionBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            startGame();
+        });
+        actionBtn.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            startGame();
+        });
+
+        // Area ketukan luas di seluruh container
+        const container = document.getElementById("gameContainer");
+        container.addEventListener("touchstart", handleInput, { passive: false });
+        container.addEventListener("mousedown", handleInput);
+
+        // Kontrol Spasi Keyboard
+        window.addEventListener("keydown", function(e) {
+            if (e.code === "Space") {
+                e.preventDefault();
+                if (gameState === "PLAYING") chicken.flap();
+                else if (gameState === "MENU" || gameState === "GAMEOVER") startGame();
+            }
+        });
+
+        // Jalankan Siklus Utama
+        gameLoop();
+    </script>
+</body>
+</html>
